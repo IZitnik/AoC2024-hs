@@ -1,25 +1,10 @@
 module Main where
 import Data.List
-import Text.Parsec
-import Text.Parsec.String
 
-aocParse :: String -> Either ParseError [(Int,Int)]
-aocParse = parse aocFile "(unknown)"
-
-aocFile = endBy line eol
-
-line :: GenParser Char st (Int, Int)
-line = do d1 <- many digit
-          many (oneOf " \t")
-          d2 <- many digit
-          return (read d1, read d2)
-
-eol =   try (string "\n\r")
-    <|> try (string "\r\n")
-    <|> string "\n"
-    <|> string "\r"
-    <?> "end of line"
-
+parse :: String -> [(Int, Int)]
+parse = convert . (map words) . lines
+    where convert :: [[String]] -> [(Int,Int)]
+          convert = map (\[l,r] -> (read l :: Int, read r :: Int))
 
 sumDiff :: [(Int,Int)] -> Int
 sumDiff [] = 0
@@ -29,11 +14,11 @@ sumDiff ((x,y):xs) = p x y + sumDiff xs
               | b > a     = b - a
               | otherwise = 0
 
-main =
-    do content <- readFile "input.txt"
-       case parse aocFile "(stdin)" content of
-         Left e -> print e
-         Right out -> let (a,b) = unzip out
-                      in print $ sumDiff $ zip (sort a) (sort b)
+zipApply :: ([a] -> [b]) -> [(a,a)] -> [(b,b)]
+zipApply fn lst = let (l,r) = unzip lst
+                   in zip (fn l) (fn r)
 
+main :: IO ()
+main = do input <- readFile "input.txt"
+          print $ sumDiff $ zipApply sort $ parse input
 
