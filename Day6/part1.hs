@@ -38,18 +38,23 @@ right dir  = succ dir
 inBounds :: Bounds -> Pos -> Bool
 inBounds (bx,by) (x,y) = x>=0 && x<=bx && y>=0 && y<=by
 
-solve :: Bounds -> Guard -> Set Obst -> Int
-solve b g o = size $ solve' b g o North empty
+solve' :: Bounds -> Guard -> Set Obst -> Direction -> Set Pos
+solve' b g obs dir = foldl (\b (g,_) -> insert g b) empty $ iterateWhile inB step' (g, dir)
+  where inB :: (Pos, Direction) -> Bool
+        inB = (inBounds b) . fst
+        step' :: (Guard, Direction) -> (Guard, Direction)
+        step' (tG,tDir) = step tG obs tDir
 
-solve' :: Bounds -> Guard -> Set Obst -> Direction -> Set Pos -> Set Pos
-solve' b g obs dir traversed
-  | outOfBounds   = traversed
-  | obstacleAhead = solve' b g  obs (right dir) traversed
-  | otherwise     = solve' b nG obs dir         (insert g traversed)
-  where
-    outOfBounds   = not $ inBounds b g
-    obstacleAhead = member nG obs
-    nG = next g dir
+iterateWhile :: (a -> Bool) -> (a -> a) -> a -> [a]
+iterateWhile end fn init = takeWhile end $ iterate fn init
+
+step :: Guard -> Set Obst -> Direction -> (Guard, Direction)
+step g obs dir
+  | obstacleAhead = (g , right dir)
+  | otherwise     = (g', dir      )
+   where obstacleAhead :: Bool
+         obstacleAhead = member g' obs
+         g' = next g dir
 
 getBoard :: Bounds -> Set Obst -> Set Pos -> String
 getBoard (bx,by) o t = unlines [[gc (y,x) | x<-[0..bx]] | y<-[0..by]]
@@ -62,7 +67,7 @@ getBoard (bx,by) o t = unlines [[gc (y,x) | x<-[0..bx]] | y<-[0..by]]
 main :: IO ()
 main = do f_content <- readFile "input.txt"
           let (Parsed bounds guard obsts) = parse f_content
-          let traversed = solve' bounds guard obsts North empty
-          putStrLn $ getBoard bounds obsts traversed
+          let traversed = solve' bounds guard obsts North
+          -- putStrLn $ getBoard bounds obsts traversed
           print $ size traversed
 
