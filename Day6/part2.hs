@@ -1,64 +1,102 @@
 module Main where
-import Data.Set (Set, empty, insert, size, member)
+import Data.Set (Set, empty, insert, size, member, fromList)
 type Pos       = (Int, Int)
 type Bounds    = (Int, Int)
-type Guard     = Pos
 type Obst      = Pos
-data Direction = North | East | South | West deriving (Show)
+data Direction = North | East | South | West deriving (Show, Eq, Ord, Enum)
+data Guard     = Guard Pos Direction deriving (Show, Eq, Ord)
 data Parsed    = Parsed Bounds Guard (Set Obst) deriving (Show)
 
 getBounds :: String -> Bounds
 getBounds str = let ln@(h:_) = lines str in ((length h)-1, (length ln)-1)
 
+unique :: Ord a => [a] -> Set a
+unique = fromList
+
 parse :: String -> Parsed
-parse inp = foldl (\p (l,n)->foldl (go n) p $ zip l [0..])
-                  (Parsed (getBounds inp) (0,0) empty)
-                  (zip (lines inp) [0..])
-  where go :: Int -> Parsed -> (Char,Int) -> Parsed
-        go row (Parsed b g o) (ch,col)
+parse inp =
+  let bounds  = getBounds inp
+      guard   = Guard (0,0) North
+      initial = Parsed bounds guard empty
+   in foldl parseLine initial $ zip (lines inp) [0..]
+  where parseLine :: Parsed -> (String, Int) -> Parsed
+        parseLine p (l,n) = foldl (parseChar n) p $ zip l [0..]
+        parseChar :: Int -> Parsed -> (Char, Int) -> Parsed
+        parseChar row (Parsed b g o) (ch,col)
            | ch == '.'  = Parsed b g o
-           | ch == '#'  = Parsed b g $ insert (row,col) o
-           | ch == '^'  = Parsed b (row,col) o
+           | ch == '#'  = Parsed b g $ insert pos o
+           | ch == '^'  = Parsed b (Guard pos North) o
            | otherwise = error "Unexpected token encountered in parse"
+            where pos = (row, col)
 
-next :: Pos -> Direction -> Pos
-next (y,x) North = (y-1, x  )
-next (y,x) East  = (y  , x+1)
-next (y,x) South = (y+1, x  )
-next (y,x) West  = (y  , x-1)
+move :: Guard -> Guard
+move (Guard (y,x) dir) =
+  case dir of
+    North -> Guard (y-1, x  ) dir
+    East  -> Guard (y  , x+1) dir
+    South -> Guard (y+1, x  ) dir
+    West  -> Guard (y  , x-1) dir
 
-right :: Direction -> Direction
-right North = East
-right East  = South
-right South = West
-right West  = North
+rotate :: Guard -> Guard
+rotate (Guard p dir) = Guard p (right dir)
+  where right :: Direction -> Direction
+        right West = North
+        right dir  = succ dir
 
-solve :: Bounds -> Guard -> Set Obst -> Int
-solve b g o = size $ solve' b g o North empty
+position :: Guard -> Pos
+position (Guard p _) = p
 
-solve' :: Bounds -> Guard -> Set Obst -> Direction -> Set Pos -> Set Pos
-solve' b@(bx,by) g@(x,y) obs dir n =
-  if x>=0 && x<=bx && y>=0 && y<=by
-    then if member (next g dir) obs
-      then solve' b g            obs (right dir) n             -- Obstacle, 90° right
-      else solve' b (next g dir) obs dir         (insert g n)  -- No Obst, Mov in dir
-    else n -- Guard out of bounds, END
+inBounds :: Bounds -> Pos -> Bool
+inBounds (bx,by) (x,y) = x>=0 && x<=bx && y>=0 && y<=by
 
-joinWith :: String -> [String] -> String
-joinWith sep = foldl1 (\a b-> a++sep++b)
+solve :: Bounds -> Set Obst -> Guard -> [Obst]
+solve b obs guard = foldl go [] $ iterateWhile inB (step obs) guard
+  where inB :: Guard -> Bool
+        inB = inBounds b . position
+        go :: [Obst] -> Guard -> [Obst]
+        go a g = let o = getObs g
+                  in if testForLoop b g (addObs o)
+                       then o:a
+                       else a
+        getObs :: Guard -> Obst
+        getObs = position . move
+        addObs :: Obst -> Set Obst
+        addObs = (flip insert) obs
 
-getBoard :: Bounds -> Set Obst -> Set Pos -> String
-getBoard (bx,by) o t = joinWith "\n" [[gc (y,x) | x<-[0..bx]] | y<-[0..by]]
+iterateWhile :: (a -> Bool) -> (a -> a) -> a -> [a]
+iterateWhile end fn init = takeWhile end $ iterate fn init
+
+step :: Set Obst -> Guard -> Guard
+step obs guard
+  | obstacleAhead = rotate guard
+  | otherwise     = move   guard
+   where obstacleAhead :: Bool
+         obstacleAhead = member (position . move $ guard) obs
+
+testForLoop :: Bounds -> Guard -> Set Obst -> Bool
+testForLoop b g o = go g empty
+  where go :: Guard -> Set Guard -> Bool
+        go g enc | member g enc   = True
+                 | not . gInB $ g = False
+                 | otherwise      = go (step o g) (insert g enc)
+          where gInB :: Guard -> Bool
+                gInB = inBounds b . position
+
+getBoard :: Bounds -> Set Obst -> Set Obst -> Set Pos -> String
+getBoard (bx,by) o ao t = unlines [[gc (y,x) | x<-[0..bx]] | y<-[0..by]]
   where gc :: Pos -> Char
         gc p | member p o && member p t = error "Traversed throught obstacle"
-             | member p o = '#'
-             | member p t = 'X'
-             | otherwise  = '.'
+             | member p o  = '#'
+             | member p ao = '0'
+             | member p t  = 'X'
+             | otherwise   = '.'
 
 main :: IO ()
-main = do f_content <- readFile "test.txt"
+main = do f_content <- readFile "input.txt"
           let (Parsed bounds guard obsts) = parse f_content
-          let traversed = solve' bounds guard obsts North empty
-          putStrLn $ getBoard bounds obsts traversed
-          print $ size traversed
+          let res = solve bounds obsts guard
+          putStrLn . unlines $ map (\(m,ln)->show ln ++ ". " ++ show m) $ zip res [1..]
+          putStrLn $ getBoard bounds obsts (unique res) empty
+          print $ length res
+          print $ size $ unique res
 

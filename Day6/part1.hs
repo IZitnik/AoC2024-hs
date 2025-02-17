@@ -27,11 +27,12 @@ parse inp =
             where pos = (row, col)
 
 move :: Guard -> Guard
-move (Guard (y,x) dir) = case dir of
-                           North -> Guard (y-1, x  ) dir
-                           East  -> Guard (y  , x+1) dir
-                           South -> Guard (y+1, x  ) dir
-                           West  -> Guard (y  , x-1) dir
+move (Guard (y,x) dir) =
+  case dir of
+    North -> Guard (y-1, x  ) dir
+    East  -> Guard (y  , x+1) dir
+    South -> Guard (y+1, x  ) dir
+    West  -> Guard (y  , x-1) dir
 
 rotate :: Guard -> Guard
 rotate (Guard p dir) = Guard p (right dir)
